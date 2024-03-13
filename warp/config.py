@@ -21,6 +21,8 @@ class DefaultSettings(object):
     # opening and closing time in seconds from 00:00
     BOOK_OPEN = 0
     BOOK_CLOSE = 24 * 3600
+    # Steps in seconds, default 15 min.
+    BOOK_STEP = 15*3600
 
     MAX_CONTENT_LENGTH = 5 * 1024 * 1024
 
