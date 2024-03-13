@@ -331,6 +331,9 @@ def apply():
     # APPLY CHANGES
     # -------------------------------------
 
+    class ApplyError(Exception):
+        pass
+
 # CH Berechne, ob heute, wenn ja: Dann gleich auf confirmed setzen
     def checkConfirmed (x):
        if (x > startTS) & (x < endTS):
