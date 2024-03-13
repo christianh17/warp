@@ -95,12 +95,23 @@ def ldapGetUserMetadata(login,ldapConnection):
 
     if len(ldapConnection.entries) != 1:
         raise Exception(f"LDAP: Wrong number of enties returned for the user: {len(ldapConnection.entries)}")
-
+# insert CH
+    ldapNameAtt = flask.current_app.config.get('LDAP_USER_NAME_ATTRIBUTE')
+    #print("ch: ldapNameAtt "+ ldapNameAtt )
+    ldapConnection.search(search_base=userSearchBase,
+                          search_filter=userSearchFilter,
+                          attributes=ldapNameAtt)
+    #print("ch: ldapConnection.entries "+ str(len(ldapConnection.entries))) #print ("ch: join " + str.join(ldapConnection))
+    #print (ldapConnection)
 
     ret = {
         "userName": ldapConnection.entries[0][ldapNameAtt].value,
-        "groups": []
+        "groups": [],
+        "mail" : ldapConnection.entries[0][ldapNameAtt].value
     }
+    #print ("CH: ret")
+    #print (ret)
+# end insert CH
 
     searchBase = flask.current_app.config.get('LDAP_GROUP_SEARCH_BASE', None)
     if searchBase is None:
@@ -150,6 +161,12 @@ def ldapApplyUserMetadata(login,userData):
             }).execute()
         elif c != userData["userName"]:
             Users.update({Users.name: userData["userName"]}).where(Users.login == login).execute()
+# insert ch
+        c = Users.select(Users.mailaddress).where(Users.login == login).scalar()
+        if c != userData["mail"]:
+            Users.update({Users.mailaddress: userData["mail"]}).where(Users.login == login).execute()
+# end insert
+
 
         existingGroups = Users.select( Users.login ) \
             .where( Users.account_type == ACCOUNT_TYPE_GROUP ) \
