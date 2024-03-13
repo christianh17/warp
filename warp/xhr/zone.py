@@ -1,8 +1,9 @@
 from collections import defaultdict
-import flask
+import flask, uuid
 from jsonschema import validate, ValidationError
 import orjson
 import peewee
+from datetime import datetime
 
 from warp import auth
 from warp import utils
@@ -42,8 +43,6 @@ def getSeats(zid):
         "seats": {}
     }
 
-    zoneGroup =  Zone.select(Zone.zone_group).where(Zone.id == zid).scalar()
-
     zoneRole = UserToZoneRoles.select(UserToZoneRoles.zone_role) \
                               .where( (UserToZoneRoles.zid == zid) & (UserToZoneRoles.login == flask.g.login) ) \
                               .scalar()
@@ -80,7 +79,7 @@ def getSeats(zid):
             assignments[r['sid']].add(r['login'])
             usedUsers.add(r['login'])
 
-        seatsCursor = Seat.select(Seat.id, Seat.name, Seat.x, Seat.y, Seat.zid, Seat.enabled, Seat.seat_group) \
+        seatsCursor = Seat.select(Seat.id, Seat.name, Seat.x, Seat.y, Seat.zid, Seat.enabled) \
                             .where(Seat.zid == zid)
 
         if zoneRole != ZONE_ROLE_ADMIN:
@@ -94,7 +93,6 @@ def getSeats(zid):
                 "y": s['y'],
                 "zid": s['zid'],
                 "enabled": s['enabled'] != 0,
-                "group": s['seat_group'] or zoneGroup,
                 "book": []
             }
 
@@ -104,7 +102,7 @@ def getSeats(zid):
             res['seats'][ str(s['id']) ] = seatD
 
 
-        bookQuery = Book.select(Book.id, Book.login, Book.sid, Users.name.alias('username'), Book.fromts, Book.tots, Seat.seat_group) \
+        bookQuery = Book.select(Book.id, Book.login, Book.sid, Users.name.alias('username'), Book.fromts, Book.tots) \
                             .join(Users, on=(Book.login == Users.login)) \
                             .join(Seat, on=(Book.sid == Seat.id)) \
                             .where((Book.fromts < tr['toTS']) & (Book.tots > tr['fromTS']) & (Seat.zid == zid)) \
@@ -121,8 +119,7 @@ def getSeats(zid):
                 "bid": b[0],
                 "login": b[1],
                 "fromTS": b[4],
-                "toTS": b[5],
-                "group": b[6] or zoneGroup })
+                "toTS": b[5] })
 
             usedUsers.add(b[1])
 
@@ -134,10 +131,12 @@ def getSeats(zid):
     # this is useful in case of reassignment
     # Also user is not allowed to book in not-assigned zones, but he/she is allowed to delete
     # own bookings from not-assigned zones
-    otherZoneBookQuery = Book.select(Book.sid, Seat.name, Seat.zid, Book.id, Book.fromts, Book.tots, peewee.fn.COALESCE(Seat.seat_group, Zone.zone_group).alias('group')) \
+    otherZoneBookQuery = Book.select(Book.sid, Seat.name, Seat.zid, Book.id, Book.fromts, Book.tots) \
                             .join(Seat, on=(Book.sid == Seat.id)) \
                             .join(Zone, on=(Seat.zid == Zone.id)) \
                             .where( (Seat.zid != zid) & (Seat.enabled == True) ) \
+                            .where(Zone.zone_group == ( \
+                                Zone.select(Zone.zone_group).where(Zone.id == zid)) ) \
                             .where(Book.login == login) \
                             .order_by(Book.fromts).tuples()
 
@@ -148,7 +147,6 @@ def getSeats(zid):
         if sid not in res['seats']:
             res['seats'][sid] = {
                 "name": b[1],
-                "group": b[6],
                 "zid": b[2],
                 "book": []
             }
@@ -333,8 +331,20 @@ def apply():
 
     class ApplyError(Exception):
         pass
+# CH Berechne, ob heute, wenn ja: Dann gleich auf confirmed setzen
+    def checkConfirmed (x):
+       if (x > startTS) & (x < endTS):
+          return (True)
+       else:
+          return (False)
 
     try:
+
+        today = datetime.utcnow().date()
+        start = datetime(today.year, today.month, today.day)
+        startTS = int(datetime.timestamp(start))
+        endTS = startTS + 86400
+
 
         with DB.atomic():
 
@@ -372,16 +382,23 @@ def apply():
                     raise ApplyError("Number of affected row is different then in remove.",108)
 
             # then we create new reservations
-            if 'book' in apply_data:
+            if 'book' in apply_data: 
+                print (apply_data)
 
                 sid = apply_data['book']['sid']
                 login = apply_data['book'].get('login', flask.g.login)
 
+#CH ergänzt um uid und confirmed - wenn heute       
+         
                 insertData = [ {
+
                         Book.login: login,
                         Book.sid: sid,
                         Book.fromts: x['fromTS'],
-                        Book.tots: x['toTS']
+                        Book.tots: x['toTS'],
+                        Book.bookuid : uuid.uuid4(),
+                        Book.confirmed : checkConfirmed(x['fromTS'])
+
                     } for x in apply_data['book']['dates'] ]
 
                 stmt = Book.insert(insertData)
