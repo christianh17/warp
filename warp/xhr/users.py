@@ -14,7 +14,7 @@ def listW(report = False):              #list is a built-in type
 
     requestData = flask.request.get_json()
 
-    query = Users.select(Users.login, Users.name, Users.account_type)
+    query = Users.select(Users.login, Users.name, Users.account_type, Users.mailaddress)
 
     (query, lastPage) = applyTabulatorToQuery(query,requestData)
 
@@ -44,6 +44,7 @@ editSchema = {
             "items": {
                 "type": "string"
             },
+        "mailaddress" : {"type" : "string"},
         }
     },
     "required": [ "login", "action", "name", "account_type"]
