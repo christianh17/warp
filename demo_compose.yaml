@@ -13,7 +13,7 @@ services:
       WARP_SECRET_KEY: 'mysecretkey'
       WARP_DATABASE_INIT_SCRIPT: '["sql/schema.sql","sql/sample_data.sql"]'
       WARP_LANGUAGE_FILE: 'i18n/en.js'
-      WARP_OMITTED_WEEKDAYS: [5,6]
+      WARP_OMITTED_WEEKDAYS: '[5,6]'
       WARP_BOOK_CLOSE: 21600
       WARP_BOOK_OPEN: 72000
   warp-demo-nginx:
