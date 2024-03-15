@@ -1,8 +1,10 @@
-import flask
+# -*- encoding: utf-8 -*-
+import flask, smtplib, ssl, email.message, email.utils, time, email.policy
 
 from warp.db import *
 from . import utils
 from . import blob_storage
+from datetime import datetime
 
 bp = flask.Blueprint('view', __name__)
 
@@ -45,6 +47,147 @@ def headerDataInit():
              "headerDataR": headerDataR,
              'hasLogout': 'auth.logout' in flask.current_app.view_functions
     }
+
+#insert ch
+
+def union(self, other_set):
+    new_set = [i for i in self.elements]  # which is actually a list
+    set_obj = set(new_set)
+    for j in other_set:
+        if j not in set_obj:
+            new_set.append(j)
+    return new_set
+
+@bp.route("/blabla")
+#@login_required 
+def blabla():
+    mailContent1 = u"""Hallo, 
+ 
+der folgende Platz ist f\u00fcr Sie am """
+    mailContent2 = """ Uhr gebucht.\n\nSollten Sie den gebuchten Platz heute nicht benutzen, stornieren Sie diesen bitte in WARP. F\u00fcr Ver\u00e4nderungen oder Stornierungen nutzen Sie bitte folgenden Link: https://zwarpap001
+"""
+
+    mailContent3 = u"""\n\nViele Gr\u00fc\u00dfe"""
+    mailSubject1 = "Ihre Buchung am " 
+    mailSubject2 = " Uhr - "
+
+    today = datetime.utcnow().date()
+    start = datetime(today.year, today.month, today.day)
+    startTS = int(datetime.timestamp(start))
+    endTS = startTS + 86400
+    print (startTS)
+    print (endTS)
+
+
+#https://docs.peewee-orm.com/en/latest/peewee/query_operators.html
+    with DB.atomic():
+       #c = Book.select(Book.id, Book.login, Book.fromts, Book.tots).where(Book.fromts.between(startTS,endTS)).execute()
+       result = (
+          Book
+         .select(Book.id, Book.login, Book.sid, Book.fromts, Book.tots, Users.mailaddress,Users.name, Seat.name.alias('SeatName'))
+         .join (Users, on=(Users.login == Book.login))
+         .join (Seat, on=(Seat.id == Book.sid))
+         .where((Book.fromts.between(startTS,endTS)&(~(Users.mailaddress.is_null()))))
+##         .where((Book.login == 'brennecke03')&(Book.fromts.between(startTS,endTS)&(~(Users.mailaddress.is_null()))))
+         .execute()
+       )
+       resultlist = list(result)
+       print ('found users')
+       print (resultlist)
+       smtp_obj = smtplib.SMTP("smtp.klk-h.de")
+       #smtp_obj = smtplib.SMTP("mail.herrmann.es")
+
+       policy = email.policy.compat32.clone(linesep='\n',
+          max_line_length=0,
+          cte_type='8bit',
+          raise_on_defect=True)
+
+# hier weiter machen und UTF-8 in Mails erlauben. Aber: Die Template-Geschichte ist gut.
+       for resultline in resultlist:
+          # jetzt die Gruppen für den MA ermitteln
+          print (resultline)
+          groupResult = (
+             Groups
+            .select(Groups.group)
+            .where(Groups.login == resultline["login"])
+#            .where(Groups.login == 'brennecke03')
+          ) 
+          print ('GroupResult:')
+          print (groupResult)
+          groupResultList = list(groupResult)
+          print (groupResultList )
+          # alle heute gebuchten Kollegen in aktueller Gruppe heraussuchen
+          fullColleagueList = []
+#          for aktGroup in groupResultList:
+          colleagueResult= (
+             Book
+            .select(Users.name, Seat.name.alias('SeatName'),Groups.group)
+            .join (Users, on=(Users.login == Book.login))
+            .join (Seat, on=(Seat.id == Book.sid))
+            .join (Groups, on=(Groups.login == Users.login))
+#             .where (((Book.fromts.between(startTS,endTS)) & (Groups.group == aktGroup ['theGroup'])))
+            .where (Book.fromts.between(startTS,endTS) & (Groups.group.in_(groupResult)))
+            .order_by (Seat.name.asc())
+            .group_by (Seat.name, Users.name,Groups.group)
+#            .execute()
+          )
+          print (colleagueResult)
+          colleagueList = list(colleagueResult)
+          mitGebucht = u"\nMit Ihnen sind heute vor Ort anwesend:\n\n"
+          lastSeat = ""
+          for colleague in colleagueList: 
+             if lastSeat != colleague ['SeatName']:
+                print (colleague ['name'], ' ' , colleague ['SeatName'], colleague ['group'])
+                mitGebucht = mitGebucht + colleague ['SeatName'] + "\t" + colleague ['name'] + '\n'
+                lastSeat = colleague ['SeatName']
+
+          msg = email.message.Message(policy)
+
+          msg.add_header('Content-Type', 'text/plain; charset="utf-8"')
+          BookDateTS = datetime.fromtimestamp(resultline["fromts"])
+          BookDateString = BookDateTS.strftime("%d.%m.%Y um %H:%M")
+          SeatNameString = resultline["SeatName"]
+          SeatNameString.encode ('utf-8')
+          #Ihre Buchung am [DATUM] um [UHRZEIT] - [PLATZNAME]
+          msg['Subject'] = mailSubject1 + BookDateString + mailSubject2 + SeatNameString
+          msgPayload = mailContent1 + BookDateString + mailContent2 + mitGebucht + mailContent3
+          #+ resultline["mailaddress"] +" "+ SeatNameString
+          #msgPayload.encode ('utf-8')
+          msg.set_payload(msgPayload, charset='utf-8')
+          msg['To'] = resultline["mailaddress"]
+          msg['From'] = resultline["mailaddress"]
+          msg['Bcc'] = "christian.herrmann@krh.de"
+
+#          bcc1 = "christian.herrmann@krh.de"
+          #msg['To'] = "christian.herrmann@krh.de"
+###          msg['To'] = "Janin.Schnittker@krh.de"
+###          smtp_obj.sendmail(msg['From'], [msg['To']], msg.as_string())
+          #rcpt =   msg['Bcc'] +', '+ msg['To']
+#          rcpt = '<janin.schnittker@krh.de>,<christian.hermann@krh.de>'
+#          print (msg)
+#          print (rcpt)
+          #******************************* an den bcc-Einstellungen muss ich noch schrauben *******************
+          smtpresult= smtp_obj.sendmail(msg['From'], [msg['To'], msg['Bcc']] , msg.as_string())
+          del msg
+#          print (1/0)
+          
+       smtp_obj.quit()
+
+#    msg = email.message.Message()
+#    msg['From'] = "christian.herrmann@krh.de"
+#    msg['To'] = "christian.herrmann@krh.de"
+#    msg['Subject'] = "E-mail Subject"
+#    msg.add_header('Content-Type', 'text')
+#    msg.set_payload("This is your message.")
+
+#    smtp_obj = smtplib.SMTP("smtp.klk-h.de")
+    #smtp_obj.sendmail(msg['From'], [msg['To']], msg.as_string())
+
+
+    return flask.render_template('index.html')
+
+# end insert ch
+
 
 @bp.route("/")
 def index():
@@ -190,3 +333,4 @@ def zoneModify(zid):
     return flask.render_template('zone_modify.html',
                     zid = zid,
                     returnURL = returnURL)
+
