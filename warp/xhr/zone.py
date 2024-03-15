@@ -393,7 +393,7 @@ def apply():
                         Book.login: login,
                         Book.sid: sid,
                         Book.fromts: x['fromTS'],
-                        Book.tots: x['toTS']
+                        Book.tots: x['toTS'],
                         Book.bookuid : uuid.uuid4(),
                         Book.confirmed : checkConfirmed(x['fromTS'])
                     } for x in apply_data['book']['dates'] ]
