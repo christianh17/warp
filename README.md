@@ -67,6 +67,8 @@ for pull of branch:
 git pull origin christianh17-step-change
 
 docker compose  --file demo_compose.yaml build --no-cache
+Oder alles zusammen:
+git pull origin MyComp2 && docker compose  --file demo_compose.yaml build && docker compose -f demo_compose.yaml down && docker compose -f demo_compose.yaml up -d
 ```
 
 After that, open http://127.0.0.1:8080 in your browser and log in as `admin` with password `noneshallpass`.
