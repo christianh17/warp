@@ -1,5 +1,5 @@
 from collections import defaultdict
-import flask
+import flask, uuid
 from jsonschema import validate, ValidationError
 import orjson
 import peewee
